@@ -1,0 +1,8 @@
+.git
+.idea
+.m2-local
+**/target
+**/*.iml
+.env
+docs
+*.log

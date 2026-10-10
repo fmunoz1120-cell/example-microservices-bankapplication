@@ -1,0 +1,72 @@
+name: bank-application
+
+services:
+  corporate:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MODULE: corporate
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      DB_URL: jdbc:postgresql://${BANK_DB_HOST:-host.docker.internal}:${BANK_DB_PORT:-5432}/bank_corporate
+      DB_USER: ${BANK_DB_USER:-bank}
+      DB_PASSWORD: ${BANK_DB_PASSWORD:-bank}
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${CORPORATE_PORT:-8002}:8002"
+    restart: unless-stopped
+    networks:
+      - bank-network
+
+  client:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MODULE: client
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      DB_URL: jdbc:postgresql://${BANK_DB_HOST:-host.docker.internal}:${BANK_DB_PORT:-5432}/bank_client
+      DB_USER: ${BANK_DB_USER:-bank}
+      DB_PASSWORD: ${BANK_DB_PASSWORD:-bank}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:19092}
+      CLIENT_EVENTS_TOPIC: bank.clients.v1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${CLIENT_PORT:-8001}:8001"
+    restart: unless-stopped
+    networks:
+      - bank-network
+      - kafka-network
+
+  account:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        MODULE: account
+    environment:
+      SERVER_ADDRESS: 0.0.0.0
+      DB_URL: jdbc:postgresql://${BANK_DB_HOST:-host.docker.internal}:${BANK_DB_PORT:-5432}/bank_account
+      DB_USER: ${BANK_DB_USER:-bank}
+      DB_PASSWORD: ${BANK_DB_PASSWORD:-bank}
+      KAFKA_BOOTSTRAP_SERVERS: ${KAFKA_BOOTSTRAP_SERVERS:-kafka:19092}
+      CLIENT_EVENTS_TOPIC: bank.clients.v1
+    extra_hosts:
+      - "host.docker.internal:host-gateway"
+    ports:
+      - "${ACCOUNT_PORT:-8000}:8000"
+    restart: unless-stopped
+    networks:
+      - bank-network
+      - kafka-network
+
+networks:
+  bank-network:
+    driver: bridge
+  kafka-network:
+    external: true
+    name: ${KAFKA_DOCKER_NETWORK:-kafka_default}

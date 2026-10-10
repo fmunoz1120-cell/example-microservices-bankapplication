@@ -1,0 +1,12 @@
+server:
+  address: ${SERVER_ADDRESS:127.0.0.1}
+  port: 8002
+spring:
+  datasource:
+    url: ${DB_URL:jdbc:postgresql://localhost:5432/bank_corporate}
+    username: ${DB_USER:bank}
+    password: ${DB_PASSWORD:bank}
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate

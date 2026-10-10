@@ -1,0 +1,118 @@
+@client = http://localhost:8001
+@account = http://localhost:8000
+@corporate = http://localhost:8002
+# Sustituir estos identificadores por los devueltos por los POST.
+@clientId = 1
+@accountId = 1
+@transactionId = 1
+
+### Crear cliente
+POST {{client}}/api/clients
+Content-Type: application/json
+
+{"firstName":"Carlos","lastName":"Guaman","completeName":"Carlos Guaman","dniTypeId":101,"dni":"1584976230","gender":"M","age":40,"address":"Quito","phone":"0991234567","password":"ClaveLocal123","isActive":true}
+
+### Listar clientes
+GET {{client}}/api/clients?page=0&size=20&sort=id,asc
+
+### Consultar cliente
+GET {{client}}/api/clients/{{clientId}}
+
+### Editar parcialmente
+PATCH {{client}}/api/clients/{{clientId}}
+Content-Type: application/json
+
+{"address":"Cuenca"}
+
+### Reemplazar datos del cliente
+PUT {{client}}/api/clients/{{clientId}}
+Content-Type: application/json
+
+{"firstName":"Ana","lastName":"Pérez","completeName":"Ana Pérez","dniTypeId":101,"dni":"0101234567","gender":"F","age":31,"address":"Cuenca","phone":"0991234567","password":"NuevaClave123","isActive":true}
+
+### Crear cuenta después de la sincronización Kafka
+POST {{account}}/api/accounts
+Content-Type: application/json
+
+{"number":"478758","accountTypeId":201,"clientId":{{clientId}},"initialAmount":100.00,"isActive":true,"workAreaId":1}
+
+### Consultar cuentas
+GET {{account}}/api/accounts?page=0&size=20
+
+### Consultar cuenta
+GET {{account}}/api/accounts/{{accountId}}
+
+### Editar cuenta
+PATCH {{account}}/api/accounts/{{accountId}}
+Content-Type: application/json
+
+{"accountTypeId":202}
+
+### Reemplazar cuenta conservando importe inicial y titular
+PUT {{account}}/api/accounts/{{accountId}}
+Content-Type: application/json
+
+{"number":"478758","accountTypeId":201,"clientId":{{clientId}},"initialAmount":100.00,"isActive":true,"workAreaId":1}
+
+### Depósito
+POST {{account}}/api/transactions
+Content-Type: application/json
+
+{"accountId":{{accountId}},"transactionTypeId":301,"amount":50.00,"workAreaId":1}
+
+### Retiro
+POST {{account}}/api/transactions
+Content-Type: application/json
+
+{"accountId":{{accountId}},"transactionTypeId":302,"amount":-20.00,"workAreaId":2}
+
+### Error de saldo esperado: HTTP 409 / Saldo no disponible
+POST {{account}}/api/transactions
+Content-Type: application/json
+
+{"accountId":{{accountId}},"transactionTypeId":302,"amount":-999999.00,"workAreaId":2}
+
+### Listar movimientos, originales y compensaciones
+GET {{account}}/api/transactions?accountId={{accountId}}&sort=date,asc&sort=id,asc
+
+### Consultar movimiento
+GET {{account}}/api/transactions/{{transactionId}}
+
+### Reversar y reemplazar (actualizar transactionId con la respuesta)
+PUT {{account}}/api/transactions/{{transactionId}}
+Content-Type: application/json
+
+{"accountId":{{accountId}},"transactionTypeId":301,"amount":35.00,"workAreaId":1}
+
+### Catálogos corporativos
+GET {{corporate}}/api/catalog-types
+
+### Crear tipo de catálogo sin código
+POST {{corporate}}/api/catalog-types
+Content-Type: application/json
+
+{"name":"Customer category"}
+
+### Valores del catálogo de cuentas
+GET {{corporate}}/api/catalog-values?catalogTypeId=2
+
+### Áreas de trabajo
+GET {{corporate}}/api/work-areas
+
+### Reversar y reemplazar parcialmente (usar el nuevo ID)
+PATCH {{account}}/api/transactions/{{transactionId}}
+Content-Type: application/json
+
+{"amount":40.00}
+
+### Reversar movimiento (usar un ID todavía no reversado)
+DELETE {{account}}/api/transactions/{{transactionId}}
+
+### Reporte: ajustar las fechas a los movimientos creados
+GET {{account}}/api/transactions/clients/{{clientId}}/report?dateTransactionStart=2026-09-01&dateTransactionEnd=2026-09-30
+
+### Baja lógica de cuenta, al finalizar las operaciones
+DELETE {{account}}/api/accounts/{{accountId}}
+
+### Baja lógica de cliente, al finalizar las operaciones
+DELETE {{client}}/api/clients/{{clientId}}

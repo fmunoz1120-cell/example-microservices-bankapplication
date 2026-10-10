@@ -1,0 +1,11 @@
+spring:
+  datasource:
+    url: ${TEST_DB_URL:jdbc:postgresql://localhost:5432/bank_client_test}
+    username: ${TEST_DB_USER:bank}
+    password: ${TEST_DB_PASSWORD:bank}
+  kafka:
+    bootstrap-servers: ${TEST_KAFKA_BOOTSTRAP_SERVERS:localhost:9092}
+bank:
+  events-topic: bank.clients.integration.v1
+  kafka-listener-enabled: true
+  outbox-delay-ms: 10000

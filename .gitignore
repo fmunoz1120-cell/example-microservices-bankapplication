@@ -1,0 +1,25 @@
+# Maven
+target/
+**/target/
+.m2-local/
+
+# Configuración local y secretos
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+.settings/
+.classpath
+.project
+*.iml
+
+# Sistema operativo y temporales
+.DS_Store
+Thumbs.db
+*.log
+*.tmp
+*.swp
+*~
