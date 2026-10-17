@@ -1,0 +1,102 @@
+name: Deploy AWS
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - 'account/**'
+      - 'client/**'
+      - 'corporate/**'
+      - 'Dockerfile'
+      - 'pom.xml'
+      - '.github/workflows/deploy-aws.yml'
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: us-east-2
+  PROJECT_NAME: bank-application
+  ENVIRONMENT_NAME: dev
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '21'
+          cache: maven
+      - run: ./mvnw --batch-mode verify
+
+  deploy:
+    needs: verify
+    runs-on: ubuntu-latest
+    environment: development
+    strategy:
+      fail-fast: false
+      matrix:
+        module: [account, client, corporate]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configurar credenciales de AWS
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_DEPLOY_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_DEPLOY_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Iniciar sesión en ECR
+        id: ecr
+        uses: aws-actions/amazon-ecr-login@v2
+
+      - name: Construir y publicar imagen inmutable
+        id: build
+        env:
+          REGISTRY: ${{ steps.ecr.outputs.registry }}
+          MODULE: ${{ matrix.module }}
+        run: |
+          IMAGE="$REGISTRY/$PROJECT_NAME-$ENVIRONMENT_NAME-$MODULE:$GITHUB_SHA"
+          if ! aws ecr describe-images \
+            --repository-name "$PROJECT_NAME-$ENVIRONMENT_NAME-$MODULE" \
+            --image-ids "imageTag=$GITHUB_SHA" >/dev/null 2>&1; then
+            docker build --build-arg "MODULE=$MODULE" --tag "$IMAGE" .
+            docker push "$IMAGE"
+          fi
+          echo "image=$IMAGE" >> "$GITHUB_OUTPUT"
+
+      - name: Descargar definición de tarea vigente
+        env:
+          MODULE: ${{ matrix.module }}
+        run: |
+          FAMILY="$PROJECT_NAME-$ENVIRONMENT_NAME-$MODULE"
+          aws ecs describe-task-definition --task-definition "$FAMILY" --query taskDefinition > task-definition.json
+
+      - name: Incorporar la nueva imagen
+        id: render
+        uses: aws-actions/amazon-ecs-render-task-definition@v1
+        with:
+          task-definition: task-definition.json
+          container-name: ${{ matrix.module }}
+          image: ${{ steps.build.outputs.image }}
+
+      - name: Registrar y desplegar la definición
+        uses: aws-actions/amazon-ecs-deploy-task-definition@v2
+        with:
+          task-definition: ${{ steps.render.outputs.task-definition }}
+          cluster: ${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_NAME }}
+          service: ${{ env.PROJECT_NAME }}-${{ env.ENVIRONMENT_NAME }}-${{ matrix.module }}
+          wait-for-service-stability: false
+
+      - name: Arrancar el servicio y esperar estabilidad
+        env:
+          MODULE: ${{ matrix.module }}
+        run: |
+          SERVICE="$PROJECT_NAME-$ENVIRONMENT_NAME-$MODULE"
+          aws ecs update-service --cluster "$PROJECT_NAME-$ENVIRONMENT_NAME" --service "$SERVICE" --desired-count 1 >/dev/null
+          aws ecs wait services-stable --cluster "$PROJECT_NAME-$ENVIRONMENT_NAME" --services "$SERVICE"

@@ -53,3 +53,148 @@ Las constraints SQL tienen nombres explícitos. Todas las FK disponen de índice
 ## Alcance
 
 Una moneda, clientes y cuentas sin autenticación de API, ejecución local. La contraseña de Client forma parte del modelo solicitado, no constituye un mecanismo de login. Las configuraciones de servidores externos y las credenciales se proporcionan por entorno. Las migraciones de cada servicio se aplican únicamente a su base.
+
+# Despliegue AWS
+
+El ambiente de desarrollo de AWS se administra con Terraform. Las tres aplicaciones se ejecutan como servicios ECS Fargate detrás de un ALB interno. RDS mantiene tres bases lógicas y credenciales independientes dentro de una instancia PostgreSQL Single-AZ. Kafka y Kafdrop permanecen en la computadora local porque MSK no está disponible en la cuenta.
+
+## Interacción entre GitHub, Terraform y AWS
+
+```mermaid
+flowchart TB
+    subgraph LOCAL_SETUP["Preparación inicial desde la computadora"]
+        DEV["Desarrollador"]
+        STATE_SCRIPT["New-TerraformState.ps1"]
+        IAM_SCRIPT["New-GitHubAwsUsers.ps1"]
+        LOCAL_TF["Terraform local<br/>init / plan / apply"]
+
+        DEV --> STATE_SCRIPT
+        DEV --> IAM_SCRIPT
+        DEV --> LOCAL_TF
+    end
+
+    subgraph GITHUB["GitHub"]
+        REPO["Repositorio<br/>rama main"]
+        SECRETS["Secrets del environment<br/>dos pares de access keys"]
+        VARIABLES["Variables de Actions<br/>bucket, correo y clave SSH pública"]
+        TF_WORKFLOW["Workflow Terraform AWS<br/>manual: plan o apply"]
+        DEPLOY_WORKFLOW["Workflow Deploy AWS<br/>push a main o ejecución manual"]
+
+        REPO --> TF_WORKFLOW
+        REPO --> DEPLOY_WORKFLOW
+        SECRETS -. "credenciales" .-> TF_WORKFLOW
+        SECRETS -. "credenciales" .-> DEPLOY_WORKFLOW
+        VARIABLES -. "configuración" .-> TF_WORKFLOW
+        VARIABLES -. "configuración" .-> DEPLOY_WORKFLOW
+    end
+
+    subgraph AWS["AWS us-east-2"]
+        STATE[("S3<br/>estado remoto y lock")]
+        TF_USER["Usuario IAM de Terraform<br/>política de infraestructura"]
+        DEPLOY_USER["Usuario IAM de despliegue<br/>política ECR/ECS"]
+        INFRA["Infraestructura base<br/>VPC, ALB, RDS, EC2,<br/>Secrets Manager y CloudWatch"]
+        ECR["ECR<br/>imágenes por microservicio"]
+        ECS["ECS Fargate<br/>account, client y corporate"]
+    end
+
+    STATE_SCRIPT -->|"crea y protege el bucket"| STATE
+    IAM_SCRIPT -->|"crea fuera del estado principal"| TF_USER
+    IAM_SCRIPT -->|"crea fuera del estado principal"| DEPLOY_USER
+    LOCAL_TF <-->|"lee y actualiza tfstate"| STATE
+    LOCAL_TF -->|"primer apply con credenciales AWS locales"| INFRA
+
+    TF_WORKFLOW -->|"access key del usuario"| TF_USER
+    DEPLOY_WORKFLOW -->|"access key del usuario"| DEPLOY_USER
+    TF_USER <-->|"plan/apply autorizado"| INFRA
+    TF_USER <-->|"estado y bloqueo"| STATE
+    DEPLOY_USER -->|"publica imágenes con tag del commit"| ECR
+    DEPLOY_USER -->|"registra tareas y actualiza servicios"| ECS
+    ECR -->|"descarga de imagen"| ECS
+```
+
+Los usuarios y sus políticas se crean mediante un bootstrap local y permanecen fuera del estado principal. Sus access keys se guardan exclusivamente como secrets del environment `development`: Terraform y despliegue usan pares distintos. El workflow de Terraform administra infraestructura y estado, mientras que el workflow de despliegue compila los tres módulos, publica imágenes inmutables en ECR y actualiza ECS.
+
+OIDC con roles de corta duración sería la opción ideal porque evita secretos permanentes. Esta cuenta usa usuarios IAM debido a que una SCP de AWS Organizations bloquea la administración de proveedores de identidad. Si esa restricción cambia, se debe migrar a OIDC y retirar las access keys.
+
+```mermaid
+flowchart LR
+    subgraph LOCAL["Computadora local"]
+        USER["Usuario / navegador"]
+        KAFKA["Kafka en Docker<br/>HOST localhost:9092<br/>AWS localhost:29092"]
+        KAFDROP["Kafdrop<br/>localhost:9000"]
+        API_TUNNEL["Túnel de API<br/>SSM"]
+        KAFKA_TUNNEL["Túnel Kafka inverso<br/>SSH sobre SSM"]
+
+        KAFDROP -->|"kafka:19092"| KAFKA
+        USER --> API_TUNNEL
+        KAFKA_TUNNEL -->|"localhost:29092"| KAFKA
+    end
+
+    subgraph AWS["AWS us-east-2"]
+        subgraph VPC["VPC 10.30.0.0/16"]
+            subgraph PUBLIC["Subred pública"]
+                ACCESS["Instancia de acceso EC2<br/>IP privada estable 10.30.0.10<br/>SSM administrado"]
+            end
+
+            subgraph PRIVATE["Subredes privadas"]
+                ALB["ALB interno"]
+
+                subgraph ECS["ECS Fargate"]
+                    CLIENT["client :8001"]
+                    ACCOUNT["account :8000"]
+                    CORPORATE["corporate :8002"]
+                end
+
+                RDS[("RDS PostgreSQL<br/>bank_client<br/>bank_account<br/>bank_corporate")]
+            end
+        end
+
+        ECR["Amazon ECR"]
+        SECRETS["Secrets Manager"]
+        LOGS["CloudWatch Logs"]
+    end
+
+    API_TUNNEL -. "sesión SSM" .-> ACCESS
+    ACCESS -->|"reenvío privado"| ALB
+    ALB --> CLIENT
+    ALB --> ACCOUNT
+    ALB --> CORPORATE
+
+    KAFKA_TUNNEL -. "establece SSH -R sobre SSM" .-> ACCESS
+    CLIENT -->|"Kafka 10.30.0.10:19092"| ACCESS
+    ACCOUNT -->|"Kafka 10.30.0.10:19092"| ACCESS
+
+    CLIENT -->|"JDBC"| RDS
+    ACCOUNT -->|"JDBC"| RDS
+    CORPORATE -->|"JDBC"| RDS
+
+    ECR -. "imágenes" .-> ECS
+    SECRETS -. "credenciales RDS" .-> ECS
+    ECS -. "logs" .-> LOGS
+```
+
+El flujo Kafka atraviesa el túnel en ambos sentidos aunque el reenvío se establezca desde la computadora:
+
+```mermaid
+sequenceDiagram
+    participant C as client en ECS
+    participant A as EC2 acceso 10.30.0.10:19092
+    participant T as Túnel SSH/SSM
+    participant K as Kafka local :29092
+    participant AC as account en ECS
+
+    C->>C: Confirma cliente y outbox en RDS
+    C->>A: Publica en bank.clients.v1
+    A->>T: Reenvía la conexión TCP
+    T->>K: Entrega al broker local
+    AC->>A: Consume desde bank.clients.v1
+    A->>T: Reenvía la conexión TCP
+    T->>K: Lee mensajes y offsets
+    AC->>AC: Actualiza client_projection y processed_events
+```
+
+Las flechas punteadas representan administración o entrega de configuración. Las flechas continuas representan tráfico de la aplicación. La instancia de acceso no ejecuta Kafka: recibe conexiones privadas de ECS en `19092` y las reenvía al listener `29092` del Kafka local. `corporate` solo usa PostgreSQL y no participa en Kafka.
+
+Las APIs se alcanzan por un túnel de Systems Manager. Un segundo túnel SSH inverso, transportado por Session Manager, publica el listener local `localhost:29092` en el puerto privado `19092` de la instancia de acceso. Ese puerto solo acepta tráfico del security group de ECS; SSH y Kafka no tienen puertos públicos de entrada. RDS acepta únicamente los grupos de seguridad de ECS y administración. Secrets Manager entrega las credenciales de base de datos a las tareas; los secrets de GitHub contienen únicamente las credenciales de automatización AWS.
+
+Las tareas `client` y `account` reciben el endpoint privado del túnel en `KAFKA_BOOTSTRAP_SERVERS`. El broker anuncia listeners distintos para Docker local, Windows y ECS. El patrón outbox, el consumo idempotente, el tópico principal, el DLT y el grupo `bank-account-v1` conservan el mismo contrato. Si se corta el túnel, los eventos permanecen pendientes en el outbox y el consumidor retoma sus offsets al recuperar la conexión.

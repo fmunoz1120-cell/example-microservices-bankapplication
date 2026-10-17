@@ -10,7 +10,7 @@
 POST {{client}}/api/clients
 Content-Type: application/json
 
-{"firstName":"Carlos","lastName":"Guaman","completeName":"Carlos Guaman","dniTypeId":101,"dni":"1584976230","gender":"M","age":40,"address":"Quito","phone":"0991234567","password":"ClaveLocal123","isActive":true}
+{"firstName":"David","lastName":"Galarza","completeName":"David Galarza","dniTypeId":101,"dni":"2384446225","gender":"M","age":40,"address":"Quito","phone":"0991234567","password":"ClaveLocal123","isActive":true}
 
 ### Listar clientes
 GET {{client}}/api/clients?page=0&size=20&sort=id,asc

@@ -7,5 +7,8 @@
 *.sql text eol=lf
 *.md text eol=lf
 *.http text eol=lf
+*.tf text eol=lf
+*.tftpl text eol=lf
+*.ps1 text eol=crlf
 mvnw text eol=lf
 *.cmd text eol=crlf

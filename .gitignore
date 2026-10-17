@@ -7,6 +7,8 @@ target/
 .env
 .env.*
 !.env.example
+bank-kafka-tunnel
+bank-kafka-tunnel.pub
 
 # IDE
 .idea/
@@ -23,3 +25,13 @@ Thumbs.db
 *.tmp
 *.swp
 *~
+
+# Terraform
+.terraform/
+*.tfstate
+*.tfstate.*
+*.tfplan
+tfplan*
+infra/terraform/backend.hcl
+infra/terraform/terraform.tfvars
+crash.log

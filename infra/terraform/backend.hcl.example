@@ -1,0 +1,5 @@
+bucket       = "REEMPLAZAR_BUCKET_DE_ESTADO"
+key          = "bank-application/dev/terraform.tfstate"
+region       = "us-east-2"
+encrypt      = true
+use_lockfile = true

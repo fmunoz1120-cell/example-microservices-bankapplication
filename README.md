@@ -2,6 +2,32 @@
 
 Tres microservicios Spring Boot 4.1.1, Java 21 y Maven. `client` administra personas/clientes en el puerto **8001**; `account` administra cuentas, movimientos y reportes en el **8000**; `corporate` administra catálogos y áreas de trabajo en el **8002**. PostgreSQL mantiene bases separadas y Kafka propaga cambios de clientes. Puede ejecutarse localmente o con Docker Compose.
 
+## Despliegue en AWS
+
+El ambiente AWS se define con Terraform en [infra/terraform/README.md](infra/terraform/README.md). La arquitectura utiliza ECS Fargate, ECR, un ALB interno, RDS PostgreSQL, Secrets Manager y CloudWatch en `us-east-2`. Kafka y Kafdrop siguen en la computadora local; `account` y `client` se conectan mediante un túnel SSH inverso sobre Session Manager.
+
+Los tres servicios exponen endpoints de salud para ECS y el ALB:
+
+```text
+/actuator/health/liveness
+/actuator/health/readiness
+```
+
+Únicamente `health` está expuesto por Actuator y no muestra detalles. Kafka usa listeners `PLAINTEXT` separados para Docker, Windows y AWS; el tramo entre la instancia de acceso y la computadora viaja cifrado por SSH y Kafka no se publica en Internet.
+
+El orden del primer despliegue es:
+
+1. Crear el bucket de estado y los dos usuarios IAM de automatización mediante los scripts locales.
+2. Aplicar Terraform localmente e inicializar las tres bases y sus usuarios mediante SSM.
+3. Crear una access key para cada usuario y guardarlas en los secrets del environment `development` de GitHub.
+4. Configurar Kafka local con los tres listeners y crear los tópicos locales.
+5. Abrir el túnel inverso de Kafka y ejecutar `Deploy AWS`.
+6. Abrir el túnel SSM al ALB interno para probar las APIs.
+
+Esta cuenta autentica GitHub Actions mediante dos usuarios IAM con permisos separados porque una SCP impide crear proveedores de identidad. OIDC con credenciales temporales sigue siendo la opción recomendada cuando la organización lo permita. Las claves permanentes requieren rotación manual y nunca deben guardarse en el repositorio o en Terraform state.
+
+No se despliegan Kafka, Kafdrop, tópicos ni bases de pruebas en AWS. El equipo local y el túnel deben permanecer activos mientras los servicios AWS necesiten mensajería.
+
 ## Estructura
 
 ```text

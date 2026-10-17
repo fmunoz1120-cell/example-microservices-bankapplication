@@ -1,0 +1,74 @@
+#!/bin/bash
+set -euo pipefail
+
+dnf install -y postgresql15 jq
+
+cat >/etc/ssh/sshd_config.d/90-bank-kafka-tunnel.conf <<'SSH_CONFIG'
+AllowTcpForwarding remote
+GatewayPorts clientspecified
+PermitListen 0.0.0.0:19092
+PasswordAuthentication no
+SSH_CONFIG
+
+systemctl reload sshd
+
+cat >/usr/local/bin/bootstrap-bank-databases <<'SCRIPT'
+#!/bin/bash
+set -euo pipefail
+
+AWS_REGION='${aws_region}'
+RDS_HOST='${rds_host}'
+ADMIN_SECRET_ARN='${admin_secret_arn}'
+ACCOUNT_SECRET_ARN='${account_secret_arn}'
+CLIENT_SECRET_ARN='${client_secret_arn}'
+CORPORATE_SECRET_ARN='${corporate_secret_arn}'
+
+read_secret() {
+  aws secretsmanager get-secret-value --region "$AWS_REGION" --secret-id "$1" --query SecretString --output text
+}
+
+ADMIN_SECRET=$(read_secret "$ADMIN_SECRET_ARN")
+ACCOUNT_SECRET=$(read_secret "$ACCOUNT_SECRET_ARN")
+CLIENT_SECRET=$(read_secret "$CLIENT_SECRET_ARN")
+CORPORATE_SECRET=$(read_secret "$CORPORATE_SECRET_ARN")
+
+ADMIN_USER=$(printf '%s' "$ADMIN_SECRET" | jq -r .username)
+export PGPASSWORD
+PGPASSWORD=$(printf '%s' "$ADMIN_SECRET" | jq -r .password)
+ACCOUNT_PASSWORD=$(printf '%s' "$ACCOUNT_SECRET" | jq -r .password)
+CLIENT_PASSWORD=$(printf '%s' "$CLIENT_SECRET" | jq -r .password)
+CORPORATE_PASSWORD=$(printf '%s' "$CORPORATE_SECRET" | jq -r .password)
+
+psql --host "$RDS_HOST" --username "$ADMIN_USER" --dbname postgres --set ON_ERROR_STOP=1 \
+  --set account_password="$ACCOUNT_PASSWORD" \
+  --set client_password="$CLIENT_PASSWORD" \
+  --set corporate_password="$CORPORATE_PASSWORD" <<'SQL'
+SELECT format('CREATE ROLE bank_account WITH LOGIN PASSWORD %L', :'account_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bank_account')\gexec
+SELECT format('ALTER ROLE bank_account WITH LOGIN PASSWORD %L', :'account_password')\gexec
+
+SELECT format('CREATE ROLE bank_client WITH LOGIN PASSWORD %L', :'client_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bank_client')\gexec
+SELECT format('ALTER ROLE bank_client WITH LOGIN PASSWORD %L', :'client_password')\gexec
+
+SELECT format('CREATE ROLE bank_corporate WITH LOGIN PASSWORD %L', :'corporate_password')
+WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bank_corporate')\gexec
+SELECT format('ALTER ROLE bank_corporate WITH LOGIN PASSWORD %L', :'corporate_password')\gexec
+
+SELECT 'CREATE DATABASE bank_account OWNER bank_account'
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'bank_account')\gexec
+SELECT 'CREATE DATABASE bank_client OWNER bank_client'
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'bank_client')\gexec
+SELECT 'CREATE DATABASE bank_corporate OWNER bank_corporate'
+WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'bank_corporate')\gexec
+
+ALTER DATABASE bank_account OWNER TO bank_account;
+ALTER DATABASE bank_client OWNER TO bank_client;
+ALTER DATABASE bank_corporate OWNER TO bank_corporate;
+SQL
+
+unset PGPASSWORD ACCOUNT_PASSWORD CLIENT_PASSWORD CORPORATE_PASSWORD
+echo 'Bases y usuarios de BankApplication preparados.'
+SCRIPT
+
+chmod 750 /usr/local/bin/bootstrap-bank-databases

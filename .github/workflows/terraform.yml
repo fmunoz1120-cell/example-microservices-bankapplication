@@ -1,0 +1,57 @@
+name: Terraform AWS
+
+on:
+  workflow_dispatch:
+    inputs:
+      command:
+        description: Acción de Terraform
+        required: true
+        type: choice
+        options: [plan, apply]
+        default: plan
+
+permissions:
+  contents: read
+
+env:
+  AWS_REGION: us-east-2
+  TF_IN_AUTOMATION: 'true'
+  TF_INPUT: 'false'
+  TF_VAR_budget_email: ${{ vars.AWS_BUDGET_EMAIL }}
+  TF_VAR_access_ssh_public_key: ${{ vars.ACCESS_SSH_PUBLIC_KEY }}
+
+jobs:
+  terraform:
+    runs-on: ubuntu-latest
+    environment: development
+    defaults:
+      run:
+        working-directory: infra/terraform
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hashicorp/setup-terraform@v3
+
+      - name: Configurar credenciales de AWS
+        uses: aws-actions/configure-aws-credentials@v5
+        with:
+          aws-access-key-id: ${{ secrets.AWS_TERRAFORM_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_TERRAFORM_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Inicializar estado remoto
+        run: >-
+          terraform init
+          -backend-config="bucket=${{ vars.TF_STATE_BUCKET }}"
+          -backend-config="key=bank-application/dev/terraform.tfstate"
+          -backend-config="region=${{ env.AWS_REGION }}"
+          -backend-config="encrypt=true"
+          -backend-config="use_lockfile=true"
+
+      - run: terraform fmt -check -recursive
+      - run: terraform validate
+      - run: terraform plan -out=tfplan
+
+      - name: Aplicar cambios aprobados
+        if: inputs.command == 'apply'
+        run: terraform apply -auto-approve tfplan

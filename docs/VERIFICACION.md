@@ -1,5 +1,33 @@
 # Verificación de la entrega
 
+## Credenciales IAM para GitHub Actions — 2026-10-16
+
+- Se retiraron del Terraform principal el proveedor OIDC de GitHub, las políticas de confianza federada, los roles de GitHub y sus variables y salidas. Los workflows usan ahora credenciales distintas para Terraform y despliegue mediante secrets del entorno `development`.
+- `New-GitHubAwsUsers.ps1` se validó con Windows PowerShell 5.1 y PowerShell 7 para usuarios ausentes, usuarios existentes y errores de permisos. Su ejecución real creó los usuarios `bank-application-dev-github-terraform` y `bank-application-dev-github-deploy` y asignó una política inline dedicada a cada uno sin generar access keys.
+- El security group de RDS usa una descripción ASCII. La retención de backups de RDS quedó parametrizada con un día y la instancia de acceso usa `t4g.micro`, ajustes requeridos por las restricciones del plan gratuito de esta cuenta.
+- `terraform fmt -check -recursive`, `terraform validate` y actionlint finalizaron correctamente. El plan de recuperación añadió siete recursos, no cambió ni destruyó recursos existentes, y el `terraform apply` terminó correctamente.
+- La comprobación posterior devolvió `No changes`. La instancia de acceso `i-0536b2681ac2f31f6` aparece `Online` en Systems Manager y los servicios ECS quedaron creados con capacidad inicial cero.
+- No se crearon ni almacenaron access keys en el repositorio, en Terraform ni en sus salidas. Queda pendiente crearlas manualmente y guardar sus cuatro valores en GitHub para poder ejecutar los workflows con las nuevas identidades.
+
+## Sustitución de MSK por Kafka local — 2026-10-13
+
+- Terraform elimina MSK y entrega a ECS el endpoint privado de la instancia de acceso para el túnel Kafka.
+- `account` y `client` ya no incluyen `aws-msk-iam-auth` ni el perfil `AWS_MSK_IAM`.
+- Se añadió un Compose de referencia con listeners separados para Docker, Windows y AWS, además del script de túnel SSH inverso sobre Session Manager.
+- La clave SSH privada permanece en la computadora; Terraform y GitHub reciben únicamente la clave pública.
+- `mvn verify` aprobó los cuatro módulos, 18 pruebas unitarias y PMD prioridades 1–3 usando la caché `.m2-local`.
+- Terraform 1.10.5 se inicializó en un directorio limpio y aprobó `fmt -check` y `validate`. Ambos Compose, los scripts PowerShell y los workflows también aprobaron sus validadores.
+- No se ejecutó `terraform plan`: este equipo todavía no tiene AWS CLI, credenciales ni backend del ambiente configurados. No se creó ni modificó infraestructura AWS.
+
+## Preparación para AWS — 2026-10-13
+
+- `mvn verify` se ejecutó desde el proyecto padre con Java 21: los cuatro módulos terminaron correctamente, se aprobaron 18 pruebas unitarias y PMD prioridades 1–3 no reportó violaciones.
+- Surefire carga Mockito como agente explícito en `client` y `account`, evitando la carga dinámica que anteriormente impedía completar Maven en este entorno.
+- Terraform 1.10.5 inicializó `hashicorp/aws` 6.68.0 y `hashicorp/random` 3.9.1; `terraform fmt -check -recursive` y `terraform validate` finalizaron correctamente.
+- Los tres workflows fueron validados con actionlint 1.7.12 y PyYAML. Los scripts PowerShell se analizaron con el parser de PowerShell sin errores.
+- `docker compose config --quiet` confirmó que el despliegue local existente continúa siendo válido.
+- No se ejecutó `terraform plan` ni se crearon recursos porque todavía no se configuraron credenciales, estado remoto ni una cuenta AWS de destino. Tampoco se ejecutaron las pruebas de integración externas.
+
 ## Reinicialización de bases y migraciones — 2026-10-09
 
 - Se eliminaron y recrearon vacíos los esquemas `public` de `bank_client`, `bank_client_test`, `bank_account`, `bank_account_test`, `bank_corporate` y `bank_corporate_test`.

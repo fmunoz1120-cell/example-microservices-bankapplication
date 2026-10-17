@@ -1,0 +1,10 @@
+aws_region        = "us-east-2"
+project_name      = "bank-application"
+environment       = "dev"
+monthly_budget_usd = 100
+budget_email      = "usuario@example.com"
+db_backup_retention_days = 1
+access_instance_type     = "t4g.micro"
+
+# Generar con: ssh-keygen -t ed25519 -f $HOME/.ssh/bank-kafka-tunnel
+access_ssh_public_key = "ssh-ed25519 AAAA_REEMPLAZAR bank-kafka-tunnel"
