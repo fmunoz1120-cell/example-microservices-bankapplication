@@ -40,6 +40,7 @@ CLIENT_PASSWORD=$(printf '%s' "$CLIENT_SECRET" | jq -r .password)
 CORPORATE_PASSWORD=$(printf '%s' "$CORPORATE_SECRET" | jq -r .password)
 
 psql --host "$RDS_HOST" --username "$ADMIN_USER" --dbname postgres --set ON_ERROR_STOP=1 \
+  --set admin_user="$ADMIN_USER" \
   --set account_password="$ACCOUNT_PASSWORD" \
   --set client_password="$CLIENT_PASSWORD" \
   --set corporate_password="$CORPORATE_PASSWORD" <<'SQL'
@@ -54,6 +55,10 @@ SELECT format('ALTER ROLE bank_client WITH LOGIN PASSWORD %L', :'client_password
 SELECT format('CREATE ROLE bank_corporate WITH LOGIN PASSWORD %L', :'corporate_password')
 WHERE NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname = 'bank_corporate')\gexec
 SELECT format('ALTER ROLE bank_corporate WITH LOGIN PASSWORD %L', :'corporate_password')\gexec
+
+GRANT bank_account TO :"admin_user";
+GRANT bank_client TO :"admin_user";
+GRANT bank_corporate TO :"admin_user";
 
 SELECT 'CREATE DATABASE bank_account OWNER bank_account'
 WHERE NOT EXISTS (SELECT 1 FROM pg_database WHERE datname = 'bank_account')\gexec
