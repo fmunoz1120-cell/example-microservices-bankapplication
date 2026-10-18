@@ -147,7 +147,33 @@ Invoke-RestMethod http://localhost:8080/api/clients
 Invoke-RestMethod http://localhost:8080/api/accounts
 Invoke-RestMethod http://localhost:8080/api/catalog-types
 ```
+## Para visualizar el esquema y tablas de la BD
 
+En una nueva terminal abre el túnel de base de datos mediante la instancia de acceso:
+```powershell
+$AccessInstanceId = terraform -chdir=infra/terraform output -raw access_instance_id
+$RdsEndpoint = terraform -chdir=infra/terraform output -raw rds_endpoint
+
+aws ssm start-session `
+  --region us-east-2 `
+  --target $AccessInstanceId `
+  --document-name AWS-StartPortForwardingSessionToRemoteHost `
+  --parameters "host=$RdsEndpoint,portNumber=5432,localPortNumber=15432"
+```
+Mantén también esa terminal abierta. En pgAdmin configura:
+- Host: 127.0.0.1
+- Port: 15432
+- Maintenance database: bank_account, bank_client o bank_corporate
+- Username: el usuario correspondiente:
+  - bank_account
+  - bank_client
+  - bank_corporate
+- Password: la contraseña actual del secreto correspondiente en AWS Secrets Manager
+- SSL mode: Prefer
+
+Password: la contraseña actual del secreto correspondiente en AWS Secrets Manager
+SSL mode: Prefer
+  
 ## Orden de operación
 
 1. Mantener Kafka y Kafdrop locales activos.
