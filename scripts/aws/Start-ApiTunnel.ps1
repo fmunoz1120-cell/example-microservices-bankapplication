@@ -30,7 +30,7 @@ try {
         [System.Text.UTF8Encoding]::new($false)
     )
 
-    Write-Host "El túnel mantendrá las APIs disponibles en http://localhost:$LocalPort"
+    Write-Host "El tunel mantendra las APIs disponibles en http://localhost:$LocalPort"
     aws ssm start-session `
         --region $Region `
         --target $AccessInstanceId `
@@ -38,7 +38,7 @@ try {
         --parameters "file://$($ParameterFile.FullName)"
 
     if ($LASTEXITCODE -ne 0) {
-        throw "El túnel de API terminó con código $LASTEXITCODE."
+        throw "El tunel de API termino con codigo $LASTEXITCODE."
     }
 } finally {
     Remove-Item -LiteralPath $ParameterFile.FullName -Force -ErrorAction SilentlyContinue
