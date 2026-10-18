@@ -47,10 +47,10 @@ try {
 }
 
 $ProxyCommand = "aws ssm start-session --region $Region --target %h --document-name AWS-StartSSHSession --parameters portNumber=%p"
-$RemoteForward = '0.0.0.0:{0}:localhost:{1}' -f $RemoteKafkaPort, $LocalKafkaPort
+$RemoteForward = '0.0.0.0:{0}:127.0.0.1:{1}' -f $RemoteKafkaPort, $LocalKafkaPort
 
 Write-Host "Túnel Kafka activo mientras esta terminal permanezca abierta."
-Write-Host "ECS:$RemoteKafkaPort -> localhost:$LocalKafkaPort"
+Write-Host "ECS:$RemoteKafkaPort -> 127.0.0.1:$LocalKafkaPort"
 
 & ssh `
     -i $ResolvedIdentityFile.Path `
