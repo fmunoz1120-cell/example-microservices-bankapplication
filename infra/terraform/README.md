@@ -161,13 +161,13 @@ aws ssm start-session `
   --parameters "host=$RdsEndpoint,portNumber=5432,localPortNumber=15432"
 ```
 Mantén también esa terminal abierta. En pgAdmin configura:
-- Host: 127.0.0.1
-- Port: 15432
-- Maintenance database: bank_account, bank_client o bank_corporate
+- Host: `127.0.0.1`
+- Port: `15432`
+- Maintenance database: `bank_account`, `bank_client` o `bank_corporate`
 - Username: el usuario correspondiente:
-  - bank_account
-  - bank_client
-  - bank_corporate
+  - `bank_account`
+  - `bank_client`
+  - `bank_corporate`
 - Password: la contraseña actual del secreto correspondiente en AWS Secrets Manager
 - SSL mode: Prefer
 
